@@ -1,8 +1,8 @@
 {
     "id": "syncvault",
     "name": "SyncVault",
-    "version": "1.0.5",
-    "minAppVersion": "1.4.0",
+    "version": "1.0.6",
+    "minAppVersion": "1.13.0",
     "description": "Sync your vault to a self-hosted CouchDB server with end-to-end encryption and real-time bidirectional updates. Fully localized Chinese UI. Rebuilt from the ideas of Self-hosted LiveSync (MIT), keeping your data under your control.",
     "author": "Tiga89",
     "isDesktopOnly": false

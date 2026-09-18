@@ -218,7 +218,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
             return;
         }
         const fp = s.keyFingerprint || "（尚未生成，启动同步后自动生成）";
-        this.fingerprintEl.createEl("small", { text: `🔐 密钥指纹：${fp}　（各设备此值应一致）` });
+        this.fingerprintEl.createEl("small", { text: `🔐 密钥指纹：${fp} （各设备此值应一致）` });
     }
 
     // ─────────────────────────── 同步设置 ───────────────────────────

@@ -38,8 +38,9 @@ import { resolveConflicts } from "./conflict";
 import { mergeMarkdown } from "./merge";
 import type { FileBody, LiveSyncSettings, SyncCounters, SyncDoc, SyncStatus } from "./types";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-PouchDB.plugin(idbAdapter as any).plugin(httpAdapter as any).plugin(replicationPlugin as any);
+PouchDB.plugin(idbAdapter as unknown as PouchDB.Plugin)
+    .plugin(httpAdapter as unknown as PouchDB.Plugin)
+    .plugin(replicationPlugin as unknown as PouchDB.Plugin);
 
 /** 复制事件处理器最小接口 */
 export interface ReplicationHandler {
@@ -344,7 +345,7 @@ export class SyncEngine {
         this.remote = new Pouch(remoteUrl, { skip_setup: true });
         const opts: Record<string, unknown> = { live: true, retry: true, batch_size: 200 };
 
-        this.pushHandler = this.db.replicate.to(this.remote!, opts);
+        this.pushHandler = this.db.replicate.to(this.remote, opts);
         this.pushHandler.on("change", (info) => {
             const change = info as { docs?: unknown[] };
             this.counters.up += change.docs?.length ?? 0;
@@ -360,7 +361,7 @@ export class SyncEngine {
             this.setStatus("error");
         });
 
-        this.pullHandler = this.db.replicate.from(this.remote!, opts);
+        this.pullHandler = this.db.replicate.from(this.remote, opts);
         this.pullHandler.on("change", (info) => {
             const change = info as { docs?: SyncDoc[] };
             const docs = change.docs ?? [];
@@ -510,10 +511,11 @@ export class SyncEngine {
     isIgnored(path: string): boolean {
         const s = this.settings();
         if (path.startsWith(".trash/") || path === ".trash") return true;
-        if (path.startsWith(".obsidian/")) {
+        const cfgDir = this.vault.configDir.replace(/^\/+/, "");
+        if (path.startsWith(cfgDir + "/")) {
             if (!s.syncHidden) return true;
             // 永远不同步本插件自身的配置文件，避免死循环
-            if (path.includes(this.vault.configDir + "/plugins/syncvault/data.json")) return true;
+            if (path.includes(cfgDir + "/plugins/syncvault/data.json")) return true;
         }
         if (s.ignoreRegEx) {
             try {
@@ -773,8 +775,8 @@ export class SyncEngine {
         if (this.conflictTimer !== null) return;
         this.conflictTimer = window.setTimeout(() => {
             this.conflictTimer = null;
-            void resolveConflicts(this).catch((e: any) => {
-                this.events.onLog(`⚠️ 冲突清扫出错：${e?.message ?? e}`);
+            void resolveConflicts(this).catch((e) => {
+                this.events.onLog(`⚠️ 冲突清扫出错：${errMsg(e)}`);
             });
         }, immediate ? 100 : 2000);
     }
