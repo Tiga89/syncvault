@@ -1,0 +1,6 @@
+SyncVault is a reimplementation inspired by the design of Self-hosted LiveSync
+(https://github.com/vrtmrz/obsidian-livesync), Copyright (c) vorotamoroz (vrtmrz),
+licensed under the MIT License.
+
+All design ideas taken from Self-hosted LiveSync remain under their original
+license. See also the project README for details.
