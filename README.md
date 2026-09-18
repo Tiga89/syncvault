@@ -1,5 +1,7 @@
 # SyncVault・syncvault
 
+**SyncVault** is a self-hosted, end-to-end encrypted, real-time two-way sync plugin for Obsidian, backed by your own CouchDB server. It is a fully localized (Chinese UI) rewrite inspired by [Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync) (MIT License). Note contents and file names are encrypted (AES-256-GCM, PBKDF2-derived key) before leaving your device, so your server operator only sees ciphertext. Works on desktop and mobile.
+
 自托管 Obsidian 实时双向同步插件，全中文界面。基于开源项目
 
 [Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync)（MIT License）的核心思路重写，

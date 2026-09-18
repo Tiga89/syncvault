@@ -20,7 +20,6 @@ export class LivesyncSettingTab extends PluginSettingTab {
         this.visible = true;
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl("h2", { text: "SyncVault 实时同步" });
 
         this.renderQuickStart(containerEl);
         this.renderEncryption(containerEl);
@@ -44,7 +43,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
     // ─────────────────────────── 快速开始 ───────────────────────────
 
     private renderQuickStart(parent: HTMLElement): void {
-        parent.createEl("h3", { text: "① 服务器设置" });
+        new Setting(parent).setName("① 服务器设置").setHeading();
         new Setting(parent).setName("快速开始").setDesc(
             "三步完成配置：① 填写服务器地址与账号 → ② 填写数据库名并「测试连接」→ ③ 打开端到端加密、设置密码 → 点击「启动同步」。所有设备使用相同配置即可互相同步。"
         );
@@ -145,7 +144,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
 
     private renderEncryption(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        section.createEl("h3", { text: "② 端到端加密" });
+        new Setting(section).setName("② 端到端加密").setHeading();
 
         new Setting(section)
             .setName("启用端到端加密")
@@ -221,7 +220,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
 
     private renderSyncSettings(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        section.createEl("h3", { text: "③ 同步设置" });
+        new Setting(section).setName("③ 同步设置").setHeading();
 
         new Setting(section)
             .setName("实时同步")
@@ -315,7 +314,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
 
     private renderConflict(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        section.createEl("h3", { text: "④ 冲突处理" });
+        new Setting(section).setName("④ 冲突处理").setHeading();
 
         new Setting(section)
             .setName("自动合并 Markdown 冲突")
@@ -334,7 +333,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
 
     private renderMaintenance(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        section.createEl("h3", { text: "⑤ 维护操作" });
+        new Setting(section).setName("⑤ 维护操作").setHeading();
 
         new Setting(section)
             .setName("立即同步")
@@ -401,7 +400,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
 
     private renderLog(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        section.createEl("h3", { text: "⑥ 同步日志" });
+        new Setting(section).setName("⑥ 同步日志").setHeading();
         this.logEl = section.createEl("textarea", {
             cls: "ls-zh-log-area",
             attr: { readonly: "readonly", spellcheck: "false" },

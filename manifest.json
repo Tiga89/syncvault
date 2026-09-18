@@ -1,9 +1,9 @@
 {
     "id": "syncvault",
     "name": "SyncVault",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "minAppVersion": "1.4.0",
-    "description": "同步你的笔记库到自托管 CouchDB 服务器，支持端到端加密，双向实时更新，全中文界面。参考 Self-hosted LiveSync（MIT）重写，数据完全由你掌控。",
+    "description": "Sync your vault to a self-hosted CouchDB server with end-to-end encryption and real-time bidirectional updates. Fully localized Chinese UI. Rebuilt from the ideas of Self-hosted LiveSync (MIT), keeping your data under your control.",
     "author": "Tiga89",
     "isDesktopOnly": false
 }
