@@ -1,0 +1,5 @@
+node_modules/
+.test-build/
+meta*.json
+main_org.js
+*.log

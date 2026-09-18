@@ -1,0 +1,9 @@
+{
+    "id": "obsidian-livesync-zh",
+    "name": "Livesync 实时同步（中文版）",
+    "version": "1.0.0",
+    "minAppVersion": "1.4.0",
+    "description": "自托管实时双向同步插件（CouchDB），支持端到端加密。基于 Self-hosted LiveSync 的核心思路重写，全中文界面：笔记保存后实时同步到你的服务器，多设备保持一致。使用前请关闭其他同步方案以免数据冲突。",
+    "author": "livesync-zh",
+    "isDesktopOnly": false
+}

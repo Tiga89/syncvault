@@ -1,0 +1,38 @@
+name: Release Obsidian 插件
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建插件
+        run: npm run build
+
+      - name: 打包并创建 Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release
+          cp main.js manifest.json styles.css versions.json LICENSE README.md release/
+          cd release && zip -r ../obsidian-livesync-zh.zip . && cd ..
+          gh release create "$GITHUB_REF_NAME" \
+            main.js manifest.json styles.css versions.json obsidian-livesync-zh.zip \
+            --generate-notes
