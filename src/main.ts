@@ -1,5 +1,5 @@
 /**
- * Livesync 实时同步（中文版）—— 插件入口
+ * SyncVault 实时同步 —— 插件入口
  *
  * 监听 Vault 事件（create/modify/delete/rename）把变更推入本地 PouchDB，
  * 由同步引擎与远端 CouchDB 做实时双向复制；远端变更自动解密落盘。

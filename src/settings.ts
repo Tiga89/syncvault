@@ -20,7 +20,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
         this.visible = true;
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl("h2", { text: "Livesync 实时同步（中文版）" });
+        containerEl.createEl("h2", { text: "SyncVault 实时同步" });
 
         this.renderQuickStart(containerEl);
         this.renderEncryption(containerEl);

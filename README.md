@@ -1,4 +1,4 @@
-# Livesync 实时同步（中文版）・obsidian-livesync-zh
+# SyncVault 实时同步・syncvault
 
 自托管 Obsidian 实时双向同步插件，全中文界面。基于开源项目
 
@@ -34,11 +34,11 @@
 
 
 
-1. 将本目录（`obsidian-livesync-zh`，含 `main.js`、`manifest.json`、`styles.css`、`versions.json`）复制到：
+1. 将本目录（`syncvault`，含 `main.js`、`manifest.json`、`styles.css`、`versions.json`）复制到：
 
-   `你的库/.obsidian/plugins/obsidian-livesync-zh/`
+   `你的库/.obsidian/plugins/syncvault/`
 
-2. 打开 Obsidian → 设置 → 第三方插件 → 开启「Livesync 实时同步（中文版）」
+2. 打开 Obsidian → 设置 → 第三方插件 → 开启「SyncVault 实时同步」
 
 3. 在插件设置页完成三步配置（见下）
 
@@ -230,7 +230,7 @@ node build-test.mjs && node .test-build/integration.test.cjs # 复制链路集�
 
 
 ```
-obsidian-livesync-zh/
+syncvault/
 
 ├── manifest.json      # 插件清单（id/名称/版本）
 

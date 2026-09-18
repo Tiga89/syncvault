@@ -1,7 +1,7 @@
 {
-    "name": "obsidian-livesync-zh",
+    "name": "syncvault",
     "version": "1.0.0",
-    "description": "自托管实时同步插件中文版（CouchDB + 端到端加密）",
+    "description": "自托管实时同步插件（CouchDB + 端到端加密）",
     "main": "main.js",
     "scripts": {
         "dev": "node esbuild.config.mjs",
@@ -9,7 +9,7 @@
         "typecheck": "tsc --noEmit"
     },
     "keywords": [],
-    "author": "livesync-zh",
+    "author": "Tiga89",
     "license": "MIT",
     "devDependencies": {
         "@types/node": "^22.0.0",

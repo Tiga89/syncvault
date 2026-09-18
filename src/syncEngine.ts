@@ -51,7 +51,7 @@ export interface PouchLike {
     };
 }
 
-const REVISION_PREFIX = "livesync-zh_";
+const REVISION_PREFIX = "syncvault_";
 
 /** 事件回调（更新状态栏/界面） */
 export interface SyncEngineEvents {
@@ -490,7 +490,7 @@ export class SyncEngine {
         if (path.startsWith(".obsidian/")) {
             if (!s.syncHidden) return true;
             // 永远不同步本插件自身的配置文件，避免死循环
-            if (path.includes("/plugins/obsidian-livesync-zh/data.json")) return true;
+            if (path.includes("/plugins/syncvault/data.json")) return true;
         }
         if (s.ignoreRegEx) {
             try {

@@ -11,7 +11,7 @@
 
 ```bash
 # 在插件目录内执行（本仓库已 init 并提交，直接加远程即可）
-git remote add origin https://github.com/<你的用户名>/obsidian-livesync-zh.git
+git remote add origin https://github.com/Tiga89/syncvault.git
 git push -u origin main
 ```
 
@@ -21,15 +21,15 @@ git push -u origin main
 
 ## 二、形态 A：私有仓库 + BRAT（仅自己用）
 
-1. **GitHub 新建仓库**：Settings → New repository → 名称 `obsidian-livesync-zh` → **Private**（私有）。
+1. **GitHub 新建仓库**：Settings → New repository → 名称 `syncvault` → **Private**（私有）。
 2. 执行上面的 `git remote add` + `git push`。
 3. 生成访问令牌（手机端安装私有插件用）：
    GitHub → 头像 → Settings → Developer settings → Personal access tokens → Tokens (classic) →
    Generate new token → 勾选 `repo` 权限 → 生成后**复制保存**（只显示一次）。
 4. 手机 Obsidian：设置 → 第三方插件 → 关闭受限模式 → 社区插件市场搜索 **BRAT** 安装。
-5. BRAT 设置 → **Add Beta plugin** → 粘贴 `https://github.com/<你的用户名>/obsidian-livesync-zh`。
+5. BRAT 设置 → **Add Beta plugin** → 粘贴 `https://github.com/Tiga89/syncvault`。
 6. 私有仓库需在 BRAT 设置里为插件填入**步骤 3 的令牌**（BRAT 设置页有 token 输入框）。
-7. 安装后插件列表出现「Livesync 实时同步（中文版）」，启用即可。
+7. 安装后插件列表出现「SyncVault 实时同步」，启用即可。
 
 以后电脑端改了代码 `git push`，手机上在 BRAT 里点 **Check for updates** 即可更新。
 （也可打 tag 触发 GitHub Actions 自动构建 Release，BRAT 会优先用 Release。）
@@ -47,7 +47,7 @@ git push -u origin main
    ```
 
    到仓库 Actions 页确认构建通过，Release 页应出现 `main.js`、`manifest.json`、`styles.css`、
-   `versions.json` 和 `obsidian-livesync-zh.zip`。
+   `versions.json` 和 `syncvault.zip`。
 3. 提交到社区目录（官方新流程）：
    - 打开 Obsidian 官网的插件开发者仪表盘（developer dashboard），登录后连接 GitHub 账号，
      选择本仓库提交；

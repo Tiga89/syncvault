@@ -21,7 +21,7 @@ export interface EncryptedBody {
 
 /** 由数据库名生成确定性盐（同一数据库在所有设备上得到同一密钥） */
 export async function deriveSalt(dbName: string): Promise<Uint8Array> {
-    const hex = await sha256Hex("obsidian-livesync-zh:v1:" + dbName);
+    const hex = await sha256Hex("syncvault:v1:" + dbName);
     return hexToBytes(hex).slice(0, 16);
 }
 

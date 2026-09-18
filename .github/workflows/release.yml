@@ -32,7 +32,7 @@ jobs:
         run: |
           mkdir -p release
           cp main.js manifest.json styles.css versions.json LICENSE README.md release/
-          cd release && zip -r ../obsidian-livesync-zh.zip . && cd ..
+          cd release && zip -r ../syncvault.zip . && cd ..
           gh release create "$GITHUB_REF_NAME" \
-            main.js manifest.json styles.css versions.json obsidian-livesync-zh.zip \
+            main.js manifest.json styles.css versions.json syncvault.zip \
             --generate-notes
