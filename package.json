@@ -28,5 +28,8 @@
         "pouchdb-adapter-idb": "^9.0.0",
         "pouchdb-core": "^9.0.0",
         "pouchdb-replication": "^9.0.0"
+    },
+    "overrides": {
+        "uuid": "^11.1.1"
     }
 }
