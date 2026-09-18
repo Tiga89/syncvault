@@ -12,7 +12,7 @@
  *  - 冲突处理：拉取时内容哈希比对 + 复制后 _conflicts 清扫（见 conflict.ts）
  *  - 端到端加密：文档体（路径+内容）在离开本机前用 AES-256-GCM 加密
  */
-import { Notice, TFile, Vault, requestUrl } from "obsidian";
+import { Notice, TFile, Vault, requestUrl, type DataWriteOptions, type FileManager } from "obsidian";
 import PouchDB from "pouchdb-core";
 // @ts-ignore
 import idbAdapter from "pouchdb-adapter-idb";
@@ -26,6 +26,8 @@ import {
     base64ToBytes,
     bufferToBase64,
     docIdFromPath,
+    errMsg,
+    errStatus,
     getExtension,
     isMarkdownFile,
     isTextFile,
@@ -36,19 +38,35 @@ import { resolveConflicts } from "./conflict";
 import { mergeMarkdown } from "./merge";
 import type { FileBody, LiveSyncSettings, SyncCounters, SyncDoc, SyncStatus } from "./types";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 PouchDB.plugin(idbAdapter as any).plugin(httpAdapter as any).plugin(replicationPlugin as any);
+
+/** 复制事件处理器最小接口 */
+export interface ReplicationHandler {
+    on(event: string, cb: (info: unknown) => void): void;
+    cancel(): void;
+}
 
 /** PouchDB 实例的最小接口 */
 export interface PouchLike {
-    get<T>(id: string, opts?: any): Promise<T>;
-    put(doc: any): Promise<any>;
-    remove(idOrDoc: any, rev?: string): Promise<any>;
-    allDocs(opts?: any): Promise<any>;
-    destroy(): Promise<any>;
+    get<T>(id: string, opts?: Record<string, unknown>): Promise<T>;
+    put(doc: object): Promise<unknown>;
+    remove(idOrDoc: string | object, rev?: string): Promise<unknown>;
+    allDocs(opts?: Record<string, unknown>): Promise<{
+        rows?: { id: string; value?: { rev?: string; conflicts?: string[]; _conflicts?: string[] } }[];
+    }>;
+    destroy(): Promise<unknown>;
+    close?(): Promise<unknown>;
     replicate: {
-        to(remote: PouchLike, opts?: any): any;
-        from(remote: PouchLike, opts?: any): any;
+        to(remote: PouchLike, opts?: Record<string, unknown>): ReplicationHandler;
+        from(remote: PouchLike, opts?: Record<string, unknown>): ReplicationHandler;
     };
+}
+
+/** PouchDB 构造函数最小类型（避免 any） */
+interface PouchConstructor {
+    new (opts: { name: string; adapter: string }): PouchLike;
+    new (url: string, opts: { skip_setup: boolean }): PouchLike;
 }
 
 const REVISION_PREFIX = "syncvault_";
@@ -62,8 +80,8 @@ export interface SyncEngineEvents {
 export class SyncEngine {
     private db: PouchLike | null = null;
     private remote: PouchLike | null = null;
-    private pushHandler: any = null;
-    private pullHandler: any = null;
+    private pushHandler: ReplicationHandler | null = null;
+    private pullHandler: ReplicationHandler | null = null;
     private cryptoKey: CryptoKey | null = null;
 
     private status: SyncStatus = "stopped";
@@ -83,14 +101,11 @@ export class SyncEngine {
     private conflictTimer: number | null = null;
     private stopRequested = false;
 
-    private vault: Vault;
-
     constructor(
         private settings: () => LiveSyncSettings,
-        private events: SyncEngineEvents
-    ) {
-        this.vault = (globalThis as any).app?.vault;
-    }
+        private events: SyncEngineEvents,
+        private vault: Vault
+    ) {}
 
     // ─────────────────────────── 对外 API ───────────────────────────
 
@@ -126,7 +141,7 @@ export class SyncEngine {
                 await this.scanVault();
             }
             if (s.liveSync) {
-                await this.startLiveReplication();
+                this.startLiveReplication();
             }
             // 定时完整同步
             if (s.periodicMinutes > 0) {
@@ -136,8 +151,9 @@ export class SyncEngine {
             }
             this.setStatus("idle");
             return true;
-        } catch (e: any) {
-            this.counters.lastError = String(e?.message ?? e);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            this.counters.lastError = msg;
             this.events.onLog(`❌ 启动同步失败：${this.counters.lastError}`);
             this.setStatus("error");
             return false;
@@ -172,11 +188,12 @@ export class SyncEngine {
             await this.replicateOnce("push");
             await this.replicateOnce("pull");
             await this.flushApplyQueue();
-            await this.scheduleConflictSweep(true);
+            this.scheduleConflictSweep(true);
             this.setStatus("idle");
             this.events.onLog(`✅ 立即同步完成（上传 ${this.counters.up}，下载 ${this.counters.down}）。`);
-        } catch (e: any) {
-            this.counters.lastError = String(e?.message ?? e);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            this.counters.lastError = msg;
             this.events.onLog(`❌ 立即同步失败：${this.counters.lastError}`);
             this.setStatus("error");
         }
@@ -188,7 +205,7 @@ export class SyncEngine {
         this.setStatus("syncing");
         await this.scanVault();
         await this.replicateOnce("push");
-        await this.scheduleConflictSweep(true);
+        this.scheduleConflictSweep(true);
         this.setStatus("idle");
         this.events.onLog("✅ 全量上传完成。");
     }
@@ -199,7 +216,7 @@ export class SyncEngine {
         this.setStatus("syncing");
         await this.replicateOnce("pull");
         await this.flushApplyQueue();
-        await this.scheduleConflictSweep(true);
+        this.scheduleConflictSweep(true);
         this.setStatus("idle");
         this.events.onLog("✅ 全量下载完成。");
     }
@@ -210,8 +227,8 @@ export class SyncEngine {
         if (this.db) {
             try {
                 await this.db.destroy();
-            } catch (e: any) {
-                this.events.onLog(`⚠️ 销毁本地数据库时出错：${e?.message ?? e}`);
+            } catch (e) {
+                this.events.onLog(`⚠️ 销毁本地数据库时出错：${errMsg(e)}`);
             }
         }
         this.db = null;
@@ -262,8 +279,9 @@ export class SyncEngine {
                 return { ok: false, msg: "❌ 服务器地址不正确（HTTP 404）。" };
             }
             return { ok: false, msg: `❌ 连接失败（HTTP ${resp.status}）。` };
-        } catch (e: any) {
-            return { ok: false, msg: `❌ 无法连接服务器：${e?.message ?? e}` };
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            return { ok: false, msg: `❌ 无法连接服务器：${msg}` };
         }
     }
 
@@ -272,7 +290,7 @@ export class SyncEngine {
     private async openLocalDb(): Promise<void> {
         const vaultPath = this.vault.getRoot().path;
         const name = REVISION_PREFIX + (await sha256Hex(vaultPath || "default")).slice(0, 16);
-        const Pouch = PouchDB as any;
+        const Pouch = PouchDB as unknown as PouchConstructor;
         this.db = new Pouch({ name, adapter: "idb" });
         this.events.onLog(`📦 本地数据库已打开：${name}`);
     }
@@ -322,27 +340,30 @@ export class SyncEngine {
     private startLiveReplication(): void {
         const { remoteUrl } = this.buildRemoteUrl();
         if (!remoteUrl || !this.db) return;
-        const Pouch = PouchDB as any;
+        const Pouch = PouchDB as unknown as PouchConstructor;
         this.remote = new Pouch(remoteUrl, { skip_setup: true });
-        const opts = { live: true, retry: true, batch_size: 200 };
+        const opts: Record<string, unknown> = { live: true, retry: true, batch_size: 200 };
 
-        this.pushHandler = this.db.replicate.to(this.remote as any, opts);
-        this.pushHandler.on("change", (info: any) => {
-            this.counters.up += (info?.docs?.length ?? 0);
+        this.pushHandler = this.db.replicate.to(this.remote!, opts);
+        this.pushHandler.on("change", (info) => {
+            const change = info as { docs?: unknown[] };
+            this.counters.up += change.docs?.length ?? 0;
             this.setStatus("syncing");
         });
         this.pushHandler.on("paused", () => {
             if (!this.stopRequested) this.setStatus("idle");
         });
-        this.pushHandler.on("error", (err: any) => {
-            this.counters.lastError = String(err?.message ?? err);
+        this.pushHandler.on("error", (err) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.counters.lastError = msg;
             this.events.onLog(`⚠️ 上传失败（将自动重试）：${this.counters.lastError}`);
             this.setStatus("error");
         });
 
-        this.pullHandler = this.db.replicate.from(this.remote as any, opts);
-        this.pullHandler.on("change", (info: any) => {
-            const docs = (info?.docs ?? []) as SyncDoc[];
+        this.pullHandler = this.db.replicate.from(this.remote!, opts);
+        this.pullHandler.on("change", (info) => {
+            const change = info as { docs?: SyncDoc[] };
+            const docs = change.docs ?? [];
             this.counters.down += docs.length;
             for (const d of docs) this.enqueueApply(d);
             this.scheduleConflictSweep();
@@ -350,8 +371,9 @@ export class SyncEngine {
         this.pullHandler.on("paused", () => {
             if (!this.stopRequested) this.setStatus("idle");
         });
-        this.pullHandler.on("error", (err: any) => {
-            this.counters.lastError = String(err?.message ?? err);
+        this.pullHandler.on("error", (err) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.counters.lastError = msg;
             this.events.onLog(`⚠️ 下载失败（将自动重试）：${this.counters.lastError}`);
             this.setStatus("error");
         });
@@ -375,15 +397,16 @@ export class SyncEngine {
     private async replicateOnce(dir: "push" | "pull"): Promise<void> {
         const { remoteUrl } = this.buildRemoteUrl();
         if (!remoteUrl || !this.db) return;
-        const Pouch = PouchDB as any;
+        const Pouch = PouchDB as unknown as PouchConstructor;
         const remote = new Pouch(remoteUrl, { skip_setup: true });
         try {
-            const handler =
-                dir === "push" ? this.db.replicate.to(remote as any) : this.db.replicate.from(remote as any);
+            const handler = dir === "push" ? this.db.replicate.to(remote) : this.db.replicate.from(remote);
             await new Promise<void>((resolve, reject) => {
                 handler.on("complete", () => resolve());
-                handler.on("error", (err: any) => reject(new Error(String(err?.message ?? err))));
-                handler.on("denied", (err: any) => reject(new Error("权限不足：" + String(err?.message ?? err))));
+                handler.on("error", (err) => reject(new Error(err instanceof Error ? err.message : String(err))));
+                handler.on("denied", (err) =>
+                    reject(new Error("权限不足：" + (err instanceof Error ? err.message : String(err))))
+                );
             });
         } finally {
             try {
@@ -403,8 +426,8 @@ export class SyncEngine {
             if (this.stopRequested) return;
             try {
                 await this.reflectFile(f, true);
-            } catch (e: any) {
-                this.events.onLog(`⚠️ 扫描 ${f.path} 出错：${e?.message ?? e}`);
+            } catch (e) {
+                this.events.onLog(`⚠️ 扫描 ${f.path} 出错：${errMsg(e)}`);
             }
         }
         this.events.onLog(`🔍 启动扫描完成（共 ${files.length} 个文件）。`);
@@ -441,9 +464,9 @@ export class SyncEngine {
             return;
         }
         const body: FileBody = { p: path, b: bufferToBase64(buf) };
-        const base: any = old
+        const base: SyncDoc = old
             ? { ...old, m: file.stat?.mtime ?? Date.now(), s: buf.byteLength, c }
-            : { _id: id, t: "f" as const, m: file.stat?.mtime ?? Date.now(), s: buf.byteLength, c };
+            : { _id: id, t: "f", m: file.stat?.mtime ?? Date.now(), s: buf.byteLength, c };
         if (s.encrypt && this.cryptoKey) {
             delete base.p;
             delete base.b;
@@ -455,9 +478,9 @@ export class SyncEngine {
             base.p = path;
             base.b = body.b;
         }
-        await db.put(base).catch((err: any) => {
+        await db.put(base).catch((err) => {
             // 409 冲突：交给冲突清扫处理
-            if (err?.status === 409) this.events.onLog(`⚡ ${path} 存在并发冲突，将由冲突处理接管。`);
+            if (errStatus(err) === 409) this.events.onLog(`⚡ ${path} 存在并发冲突，将由冲突处理接管。`);
             else throw err;
         });
     }
@@ -470,7 +493,7 @@ export class SyncEngine {
         const id = await docIdFromPath(path);
         const doc = await db.get<SyncDoc>(id).catch(() => null);
         if (doc && !doc._deleted) {
-            await db.remove(doc._id, doc._rev!).catch(() => undefined);
+            await db.remove(doc._id, doc._rev).catch(() => undefined);
         }
     }
 
@@ -490,7 +513,7 @@ export class SyncEngine {
         if (path.startsWith(".obsidian/")) {
             if (!s.syncHidden) return true;
             // 永远不同步本插件自身的配置文件，避免死循环
-            if (path.includes("/plugins/syncvault/data.json")) return true;
+            if (path.includes(this.vault.configDir + "/plugins/syncvault/data.json")) return true;
         }
         if (s.ignoreRegEx) {
             try {
@@ -521,8 +544,8 @@ export class SyncEngine {
                 if (this.stopRequested) return;
                 try {
                     await this.applyRemoteDoc(doc);
-                } catch (e: any) {
-                    this.events.onLog(`⚠️ 应用远端变更失败（${doc._id}）：${e?.message ?? e}`);
+                } catch (e) {
+                    this.events.onLog(`⚠️ 应用远端变更失败（${doc._id}）：${errMsg(e)}`);
                 }
                 await sleep(8);
             }
@@ -552,10 +575,10 @@ export class SyncEngine {
             if (!path) return;
 
             if (!local || local._deleted) {
-                if (local?._deleted) await db.remove(local._id, local._rev!).catch(() => undefined);
+                if (local?._deleted) await db.remove(local._id, local._rev).catch(() => undefined);
                 await this.writeToVault(path, content, doc.c);
-                await db.put(doc).catch((err: any) => {
-                    if (err?.status !== 409) throw err;
+                await db.put(doc).catch((err) => {
+                    if (errStatus(err) !== 409) throw err;
                 });
                 return;
             }
@@ -567,8 +590,8 @@ export class SyncEngine {
                 }
                 await db
                     .put({ ...local, m: doc.m, s: doc.s })
-                    .catch((err: any) => {
-                        if (err?.status !== 409) throw err;
+                    .catch((err) => {
+                        if (errStatus(err) !== 409) throw err;
                     });
                 return;
             }
@@ -609,12 +632,13 @@ export class SyncEngine {
         if (abs instanceof TFile) {
             const diskHash = await this.diskFileHash(path);
             if (diskHash === local.c) {
-                await this.vault.trash(abs, true).catch((e: any) => this.events.onLog(`⚠️ 删除 ${path} 失败：${e?.message ?? e}`));
+                const fm = (this.vault as unknown as { app: { fileManager: FileManager } }).app.fileManager;
+                await fm.trashFile(abs).catch((e: unknown) => this.events.onLog(`⚠️ 删除 ${path} 失败：${errMsg(e)}`));
             } else {
                 this.events.onLog(`🛡️ 远端已删除 ${path}，但本地有未推送的修改，已保留本地文件。`);
             }
         }
-        await db.remove(local._id, local._rev!).catch(() => undefined);
+        await db.remove(local._id, local._rev).catch(() => undefined);
     }
 
     /** 冲突处理（本地未推送修改 vs 远端修改） */
@@ -666,10 +690,10 @@ export class SyncEngine {
         const bytes = base64ToBytes(contentBase64);
         if (isTextFile(path)) {
             const text = new TextDecoder().decode(bytes);
-            await this.vault.create(path, text, { overwrite: true } as any);
+            await this.vault.create(path, text, { overwrite: true } as unknown as DataWriteOptions);
         } else {
             const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-            await this.vault.createBinary(path, ab, { overwrite: true } as any);
+            await this.vault.createBinary(path, ab, { overwrite: true } as unknown as DataWriteOptions);
         }
         if (this.lastApplied.size >= this.lastAppliedMax) this.lastApplied.clear();
         this.lastApplied.set(path, contentHash);
@@ -684,9 +708,9 @@ export class SyncEngine {
             if (!this.vault.getAbstractFileByPath(acc)) {
                 try {
                     await this.vault.createFolder(acc);
-                } catch (e: any) {
+                } catch (e) {
                     // 目录已存在等并发错误，忽略
-                    if (!String(e?.message ?? "").includes("already")) throw e;
+                    if (!errMsg(e).includes("already")) throw e;
                 }
             }
         }
@@ -709,8 +733,8 @@ export class SyncEngine {
         // 主动推送副本（可能在远端应用期间创建，vault 事件会被抑制）
         const file = this.vault.getAbstractFileByPath(candidate);
         if (file instanceof TFile) {
-            await this.reflectFile(file).catch((e: any) =>
-                this.events.onLog(`⚠️ 推送冲突副本失败：${e?.message ?? e}`)
+            await this.reflectFile(file).catch((e) =>
+                this.events.onLog(`⚠️ 推送冲突副本失败：${errMsg(e)}`)
             );
         }
         return candidate;

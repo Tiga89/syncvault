@@ -1,7 +1,7 @@
 /**
  * 中文设置界面
  */
-import { App, Modal, Notice, PluginSettingTab, Setting, TextComponent } from "obsidian";
+import { App, Modal, Notice, PluginSettingTab, Setting, TextComponent, type SettingDefinition } from "obsidian";
 import { generateStrongPassphrase } from "./crypto";
 import type LivesyncZhPlugin from "./main";
 
@@ -11,6 +11,11 @@ export class LivesyncSettingTab extends PluginSettingTab {
     private passInput: TextComponent | null = null;
     private fingerprintEl: HTMLElement | null = null;
     private visible = false;
+
+    /** 声明式设置定义（Obsidian 1.13+ 设置搜索用） */
+    getSettingDefinitions(): SettingDefinition[] {
+        return [];
+    }
 
     constructor(app: App, private plugin: LivesyncZhPlugin) {
         super(app, plugin);
@@ -134,7 +139,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
             error: "⚠ 出错",
         };
         const cls = st === "error" ? "ls-zh-status-error" : st === "syncing" ? "ls-zh-status-warn" : "ls-zh-status-ok";
-        el.createDiv({ cls, text: `${labels[st] ?? st}　↑ 上传 ${cnt.up}　↓ 下载 ${cnt.down}` });
+        el.createDiv({ cls, text: `${labels[st] ?? st} ↑ 上传 ${cnt.up} ↓ 下载 ${cnt.down}` });
         if (st === "error" && cnt.lastError) {
             el.createDiv({ cls: "ls-zh-status-error", text: `错误：${cnt.lastError}` });
         }
@@ -300,7 +305,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
             );
 
         new Setting(section)
-            .setName("同步 .obsidian 配置目录")
+            .setName(`同步配置目录（${this.app.vault.configDir}）`)
             .setDesc("同步设置、主题、代码片段等（不包括本插件自身的配置文件）。建议在普通笔记同步稳定后再开启。")
             .addToggle((t) =>
                 t.setValue(this.plugin.settings.syncHidden).onChange(async (v) => {
@@ -384,7 +389,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
                     });
                     new Setting(modal.contentEl)
                         .addButton((b) => {
-                            b.setButtonText("取消").setWarning().onClick(() => modal.close());
+                            b.setButtonText("取消").setDestructive().onClick(() => modal.close());
                         })
                         .addButton((b) => {
                             b.setButtonText("确认重置").setCta().onClick(async () => {

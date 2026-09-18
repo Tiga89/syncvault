@@ -30,10 +30,7 @@ export async function resolveConflicts(engine: SyncEngine): Promise<void> {
     if (!db) return;
 
     const res = await db.allDocs({ conflicts: true });
-    const rows = (res?.rows ?? []) as {
-        id: string;
-        value?: { rev?: string; conflicts?: string[]; _conflicts?: string[] };
-    }[];
+    const rows = res?.rows ?? [];
 
     for (const row of rows) {
         if (engine.isStopping()) return;

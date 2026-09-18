@@ -1,268 +1,172 @@
-# SyncVault・syncvault
+# SyncVault
 
-**SyncVault** is a self-hosted, end-to-end encrypted, real-time two-way sync plugin for Obsidian, backed by your own CouchDB server. It is a fully localized (Chinese UI) rewrite inspired by [Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync) (MIT License). Note contents and file names are encrypted (AES-256-GCM, PBKDF2-derived key) before leaving your device, so your server operator only sees ciphertext. Works on desktop and mobile.
+**[English](README.md) | [中文](README.zh-CN.md)**
 
-自托管 Obsidian 实时双向同步插件，全中文界面。基于开源项目
+SyncVault is a self-hosted, end-to-end encrypted, real-time two-way sync plugin for [Obsidian](https://obsidian.md), backed by your own CouchDB server. It is a fully localized (Chinese UI) rewrite inspired by the design of [Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync) (MIT License).
 
-[Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync)（MIT License）的核心思路重写，
+Your note contents and file names are encrypted (AES-256-GCM, key derived via PBKDF2) **before they leave your device**, so your server operator can only see ciphertext. Works on desktop and mobile.
 
-聚焦个人自用场景：**实时同步 + 端到端加密 + 冲突处理**，配置一目了然，无多余功能。
+> ⚠️ Before using SyncVault, **disable** other sync methods for the same vault — Obsidian Sync, iCloud, Nutstore, etc. — to avoid conflicts and data corruption. Back up your vault first.
 
-> ⚠️ 使用前请
->
-> **关闭**
->
->  Obsidian 官方同步（Obsidian Sync）、iCloud、坚果云等其他同步方案，
-> 避免多套同步互相覆盖造成数据错乱。建议先备份 Vault。
+---
 
+## Features
 
+| Feature | Description |
+| --- | --- |
+| Real-time two-way sync | Continuous CouchDB replication; changes sync on save, reconnects automatically after disconnects |
+| End-to-end encryption | AES-256-GCM; key derived from your passphrase with PBKDF2 (310,000 iterations); **file content and file names are encrypted before leaving your device** — the server only sees ciphertext |
+| Conflict handling | Markdown conflicts auto-merge (if one side is a superset, it merges directly; otherwise conflict markers merge both versions without losing content); other files keep the local version and save the remote one as a "（冲突 …）" copy |
+| Localized Chinese UI | Server, encryption, sync, conflict and maintenance settings fully explained in Chinese |
+| Multi-device | Fill in the same server + database name + passphrase on every device and they stay in sync |
+| Safety nets | Periodic full sync, startup scan, ignore rules, oversized-file skipping |
 
-***
+## Installation
 
-## 功能
+1. Copy this directory (`syncvault`, containing `main.js`, `manifest.json`, `styles.css`, `versions.json`) into:
+   `YourVault/.obsidian/plugins/syncvault/`
+2. Open Obsidian → Settings → Community plugins → enable **SyncVault**.
+3. Complete the three-step setup on the plugin settings page (see below).
 
+## Quick start
 
+### 1. Prepare the server (CouchDB — skip if already deployed)
 
-| 功能     | 说明                                                                   |
-| ------ | -------------------------------------------------------------------- |
-| 实时双向同步 | 基于 CouchDB 的持续复制（live replication），保存即同步，断线自动重连                      |
-| 端到端加密  | AES-256-GCM，密钥由密码经 PBKDF2（31 万次迭代）派生；**文件内容与文件名在离开本机前即加密**，服务器只能看到密文 |
-| 冲突处理   | Markdown 冲突自动合并（一方为超集时直接合并，否则冲突标记合并不丢内容）；其他文件冲突自动保存「（冲突 …）」副本        |
-| 中文配置界面 | 服务器、加密、同步、冲突、维护操作全中文说明                                               |
-| 多设备    | 所有设备填相同的服务器 + 数据库名 + 加密密码即可互相同步                                      |
-| 安全兜底   | 定时完整同步、启动扫描、忽略规则、超大文件跳过                                              |
+You have already deployed your sync server. Two things to confirm:
 
-## 安装
-
-
-
-1. 将本目录（`syncvault`，含 `main.js`、`manifest.json`、`styles.css`、`versions.json`）复制到：
-
-   `你的库/.obsidian/plugins/syncvault/`
-
-2. 打开 Obsidian → 设置 → 第三方插件 → 开启「SyncVault」
-
-3. 在插件设置页完成三步配置（见下）
-
-## 快速开始
-
-### 1. 准备服务器（CouchDB，已部署则跳过）
-
-你已部署好同步服务器，只需确认两点：
-
-
-
-* **启用 CORS**（否则 Obsidian 客户端无法与服务器通信）。在 CouchDB 的
-
-  `local.ini` / `default.ini` 中添加：
-
-
+- **Enable CORS** (otherwise the Obsidian client cannot talk to the server). In CouchDB's `local.ini` / `default.ini`:
 
 ```
-\[couchdb]
+[couchdb]
+; if you need to sync files larger than 5MB, raise the single-doc limit (default 8MB)
+;max_document_size = 134217728
 
-; 若需同步超过 5MB 的文件，调大单文档上限（默认 8MB）
+[chttpd]
+; allow cross-origin
+require_valid_user = false
 
-;max\_document\_size = 134217728
-
-\[chttpd]
-
-; 允许跨域
-
-require\_valid\_user = false
-
-\[cors]
-
-origins = \*
-
+[cors]
+origins = *
 credentials = true
-
 methods = GET, PUT, POST, HEAD, DELETE
-
 headers = accept, authorization, content-type, origin, referer, x-csrf-token
 ```
 
-然后重启 CouchDB。
+Then restart CouchDB.
 
+- **HTTPS is strongly recommended** (reverse proxy such as Nginx/Caddy with a certificate) to protect the transport link. Even without HTTPS, end-to-end encryption guarantees the server cannot read your notes.
 
+### 2. First device
 
-* **强烈建议使用 HTTPS**（反向代理如 Nginx/Caddy 加证书），保证传输链路加密。
+1. Open plugin settings → "① 服务器设置":
+   - Server address: `http://your-server:5984` or `https://sync.example.com`
+   - Username / password: your CouchDB account
+   - Database name: anything, e.g. `obsidian-vault` (must be the same on all devices)
+2. Click **测试连接** (Test connection) — the database is created automatically if it does not exist.
+3. Under "② 端到端加密", enable encryption and set / generate a **passphrase**.
+4. Click **启动同步** (Start sync), then **全量上传到服务器** (Full upload) to push your vault to the server.
 
-  即使不使用 HTTPS，端到端加密也能保证服务器上无法读取笔记内容。
+### 3. Other devices
 
-### 2. 第一台设备
+1. Install the plugin and fill in the **same** server, account, database name and passphrase.
+2. Test connection → start sync → click **从服务器全量下载** (Full download) to pull everything.
+3. Real-time two-way sync runs from then on.
 
+> If you do not want the new device to overwrite local files wholesale, start live sync first and run "立即同步" (Sync now) only for individual files.
 
+## End-to-end encryption details
 
-1. 打开插件设置 →「① 服务器设置」：
+- Algorithm: AES-256-GCM (authenticated, detects tampering).
+- Key derivation: PBKDF2-SHA256, 310,000 iterations; the salt is derived deterministically from the **database name**, so the same database + same passphrase derives the **same key** on every device — no key exchange files needed.
+- Scope: **file content + file path** (the whole document body is encrypted); the server only sees metadata such as content hashes, sizes and mtimes.
+- The key stays in the local plugin config (`data.json`) and is **never uploaded**; keep your vault and passphrase safe.
+- ⚠️ **Losing the passphrase means the data can never be decrypted again**; ⚠️ after changing the passphrase or database name, you must first "重置本地数据库" (Reset local database) under the old config and re-upload, otherwise old data cannot be decrypted (the plugin detects the key fingerprint and blocks the wrong sync).
 
-* 服务器地址：`http://你的服务器:5984` 或 `https://sync.example.com`
+## Conflict handling
 
-* 用户名 / 密码：CouchDB 账号
+- When the same file is modified on two devices:
+  - **Markdown**: if one side is a superset of the other (line-based), the merge result is taken automatically; otherwise both versions are merged into the original file with `<<<<<<< 本地版本 / ======= / >>>>>>> 远端版本` markers so nothing is lost and you can review manually.
+  - **Other files**: the local version is kept and the remote version is saved as `original-name（冲突 timestamp）.ext`.
+- You can disable auto-merge under "④ 冲突处理" (always save a conflict copy instead).
 
-* 数据库名：任意，如 `obsidian-vault`（所有设备一致）
+## Commands
 
-1. 点击「**测试连接**」—— 若数据库不存在会自动创建。
+| Command | Purpose |
+| --- | --- |
+| 启动同步 / 停止同步 (Start/Stop sync) | Manually control the sync engine |
+| 立即同步 (Sync now) | One manual two-way sync |
+| 全量上传到服务器 (Full upload) | First-device initialization |
+| 从服务器全量下载 (Full download) | Second-device initialization |
+| 重置本地同步数据库 (Reset local sync database) | Clear the local sync cache (does not affect the server or your notes) |
 
-2. 在「② 端到端加密」开启加密并设置 / 生成**加密密码**。
+The refresh icon in the left ribbon = sync now; the status bar at the bottom shows sync status and up/download counters.
 
-3. 点击「**启动同步**」，然后「**全量上传**」把当前库推送到服务器。
+## Settings reference
 
-### 3. 其他设备
+| Setting | Default | Description |
+| --- | --- | --- |
+| 实时同步 (Live sync) | On | Continuous replication with auto-reconnect |
+| 保存后自动同步 (Sync on save) | On | Sync immediately after Ctrl+S |
+| 定时完整同步 (Periodic full sync) | 10 min | Fallback full sync; 0 disables |
+| 启动时扫描 (Startup scan) | On | Picks up external changes made while the plugin was off |
+| 最大同步文件大小 (Max file size) | 5 MB | Larger files are skipped (raise `max_document_size` on the server to relax) |
+| 忽略规则 (Ignore regex) | empty | Matching paths are not synced, e.g. `^附件/` |
+| 同步配置目录 (Sync config dir) | Off | Sync settings/themes/snippets (excluding the plugin's own `data.json`) |
 
+## FAQ
 
+**Connection fails / keeps retrying?**
 
-1. 安装插件，填**相同的**服务器、账号、数据库名、加密密码。
+1. Click "测试连接" first and read the error: 401/403 means wrong credentials; 404 means a wrong address; cannot connect → check the port and firewall.
+2. If "测试连接" succeeds but replication keeps failing, CORS is usually not configured — enable CORS in CouchDB as above and restart.
 
-2. 测试连接 → 启动同步 → 点击「**全量下载**」拉取全部内容。
+**Need to sync files larger than 5MB?**
 
-3. 之后即可实时双向同步。
+Raise the plugin's "最大同步文件大小" and increase `max_document_size` in CouchDB (e.g. 134217728 = 128MB), then restart.
 
-> 若新设备不想全量覆盖本地已有文件，可先启动实时同步，仅对个别文件执行「立即同步」。
+**Sync reports "凭据不一致" after toggling encryption / changing the passphrase?**
 
-## 端到端加密说明
+First "重置本地数据库" (Reset local database), then re-run "全量上传" or "全量下载". Note: data uploaded with a new passphrase cannot be decrypted by devices using the old one.
 
+**Will my notes ever appear in plaintext on the server?**
 
+No, when end-to-end encryption is on — ciphertext is only decrypted on your devices. The passphrase never leaves your machine.
 
-* 加密算法：AES-256-GCM（带认证标签，可检测篡改）。
+**Compatible with official Obsidian Sync?**
 
-* 密钥派生：PBKDF2-SHA256，310,000 次迭代；盐由「数据库名」确定性派生，
+No, and they should not be used together. Keep only one sync solution.
 
-  因此同一数据库 + 同一密码在所有设备推导出**同一把密钥**，无需交换密钥文件。
-
-* 加密范围：**文件内容 + 文件路径**（文档体整体加密）；服务器可见的仅剩
-
-  内容哈希、大小、修改时间等元数据。
-
-* 密钥保存在本机插件配置（`data.json`）中，**不会上传**；请妥善保管 Vault 与密码。
-
-* ⚠️ **忘记密码 = 数据永久无法解密**；⚠️ 修改密码或数据库名后，必须先在旧配置下
-
-  「重置本地数据库」再重新上传，否则旧数据无法解密（插件会检测密钥指纹并阻止错误同步）。
-
-## 冲突处理
-
-
-
-* 同一文件在两台设备都被修改时：
-
-
-  * **Markdown**：若一方是另一方的超集（按行）→ 自动取合并结果；
-
-    否则用 `<<<<<<< 本地版本 / ======= / >>>>>>> 远端版本` 标记合并进原文件，双方内容都不丢失，便于人工复核。
-
-  * **其他文件**：本地版本保留，远端版本另存为 `原文件名（冲突 时间戳）.ext`。
-
-* 可在「④ 冲突处理」关闭自动合并（一律存冲突副本）。
-
-## 常用命令
-
-
-
-| 命令          | 作用                    |
-| ----------- | --------------------- |
-| 启动同步 / 停止同步 | 手动控制同步引擎              |
-| 立即同步        | 手动双向同步一次              |
-| 全量上传到服务器    | 第一台设备初始化              |
-| 从服务器全量下载    | 第二台设备初始化              |
-| 重置本地同步数据库   | 清空本地同步缓存（不影响服务器与笔记文件） |
-
-功能区（左侧栏）的刷新图标 = 立即同步；底部状态栏显示同步状态与上传 / 下载计数。
-
-## 配置项速查
-
-
-
-| 配置              | 默认    | 说明                                    |
-| --------------- | ----- | ------------------------------------- |
-| 实时同步            | 开     | 持续复制，断线自动重连                           |
-| 保存后自动同步         | 开     | Ctrl+S 后立即同步                          |
-| 定时完整同步          | 10 分钟 | 兜底完整同步；0 关闭                           |
-| 启动时扫描           | 开     | 补同步插件关闭期间的外部修改                        |
-| 最大同步文件大小        | 5 MB  | 超过则跳过（可调大服务器 `max_document_size` 后放宽） |
-| 忽略规则（正则）        | 空     | 匹配的路径不同步，如 `^附件/`                     |
-| 同步 .obsidian 配置 | 关     | 同步设置 / 主题 / 片段（不含本插件 data.json）       |
-
-## 常见问题
-
-**连接失败 / 一直重试？**
-
-
-
-1. 先点「测试连接」看具体报错：401/403 是账号密码错误；404 是地址不对；无法连接请检查端口与防火墙。
-
-2. 若「测试连接」成功但复制一直失败，通常是 **CORS 未配置**，按上文在 CouchDB 中启用 CORS 并重启。
-
-**需要同步大于 5MB 的文件？**
-
-调大插件「最大同步文件大小」，并在 CouchDB 中把 `max_document_size` 调大（如 134217728 = 128MB）后重启。
-
-**加密开关 / 密码改了之后同步报 “凭据不一致”？**
-
-先「重置本地数据库」，再重新「全量上传」或「全量下载」。注意：以新密码上传的数据，旧密码设备将无法解密。
-
-**我的笔记会不会出现在服务器明文里？**
-
-开启端到端加密后不会 —— 密文只在你的设备上解密。加密密码不出本机。
-
-**与官方 Obsidian Sync 兼容吗？**
-
-不兼容，且不应同时使用。请只保留一种同步方案。
-
-## 开发者
-
-
+## Development
 
 ```
-npm install        # 安装依赖
-
-npm run dev        # 监听构建（开发）
-
-npm run build      # 生产构建 → main.js
-
-npm run typecheck  # 类型检查
-
-node build-test.mjs && node .test-build/unit.test.cjs        # 单元测试
-
-node build-test.mjs && node .test-build/integration.test.cjs # 复制链路集成测试
+npm install        # install dependencies
+npm run dev        # watch build (development)
+npm run build      # production build → main.js
+npm run typecheck  # type check
+node build-test.mjs && node .test-build/unit.test.cjs        # unit tests
+node build-test.mjs && node .test-build/integration.test.cjs # replication integration tests
 ```
 
-## 目录结构
-
-
+## Project structure
 
 ```
 syncvault/
-
-├── manifest.json      # 插件清单（id/名称/版本）
-
-├── main.js            # 构建产物（Obsidian 实际加载的文件）
-
-├── styles.css         # 样式
-
-├── versions.json      # 版本兼容
-
+├── manifest.json      # plugin manifest (id/name/version)
+├── main.js            # build output (the file Obsidian loads)
+├── styles.css         # styles
+├── versions.json      # version compatibility
 ├── src/
-
-│   ├── main.ts        # 插件入口：命令、状态栏、Vault 事件
-
-│   ├── syncEngine.ts  # 同步引擎：PouchDB + CouchDB 实时复制、防回声、冲突处理
-
-│   ├── crypto.ts      # 端到端加密（AES-256-GCM + PBKDF2）
-
-│   ├── conflict.ts    # 冲突清扫（\_conflicts 多版本处理）
-
-│   ├── merge.ts       # Markdown 行级合并（纯函数）
-
-│   ├── settings.ts    # 中文设置界面
-
-│   ├── types.ts       # 类型与默认配置
-
-│   └── utils.ts       # 工具函数
-
-└── test/              # 单元 + 集成测试
+│   ├── main.ts        # plugin entry: commands, status bar, vault events
+│   ├── syncEngine.ts  # sync engine: PouchDB + CouchDB live replication, echo suppression, conflict handling
+│   ├── crypto.ts      # end-to-end encryption (AES-256-GCM + PBKDF2)
+│   ├── conflict.ts    # conflict sweep (_conflicts multi-revision handling)
+│   ├── merge.ts       # Markdown line-level merge (pure functions)
+│   ├── settings.ts    # localized Chinese settings UI
+│   ├── types.ts       # types and default config
+│   └── utils.ts       # utilities
+└── test/              # unit + integration tests
 ```
 
 ## License
 
-MIT。参考项目：[Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync)（MIT）。
+MIT. Inspired by [Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync) (MIT).

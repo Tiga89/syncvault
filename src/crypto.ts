@@ -58,7 +58,7 @@ export async function encryptObject(key: CryptoKey, obj: unknown): Promise<Encry
     const json = JSON.stringify(obj);
     const data = new TextEncoder().encode(json);
     const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-    const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as BufferSource }, key, data as BufferSource);
+    const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data);
     return { iv: bytesToBase64(iv), ct: bytesToBase64(new Uint8Array(ct)) };
 }
 
@@ -66,7 +66,11 @@ export async function encryptObject(key: CryptoKey, obj: unknown): Promise<Encry
 export async function decryptObject<T>(key: CryptoKey, body: EncryptedBody): Promise<T> {
     const iv = base64ToBytes(body.iv);
     const ct = base64ToBytes(body.ct);
-    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv as BufferSource }, key, ct as BufferSource);
+    const plain = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: iv as BufferSource },
+        key,
+        ct as BufferSource
+    );
     return JSON.parse(new TextDecoder().decode(plain)) as T;
 }
 

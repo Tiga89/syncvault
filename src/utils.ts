@@ -18,7 +18,7 @@ export function bytesToHex(bytes: Uint8Array): string {
 
 export function hexToBytes(hex: string): Uint8Array {
     const out = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
     return out;
 }
 
@@ -101,5 +101,18 @@ export function dirname(path: string): string {
 
 /** 挂起若干毫秒 */
 export function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/** 从 unknown 错误中提取 HTTP/PouchDB 状态码（如 409 冲突），无则返回 undefined */
+export function errStatus(e: unknown): number | undefined {
+    if (e && typeof e === "object" && "status" in e) {
+        return (e as { status?: number }).status;
+    }
+    return undefined;
+}
+
+/** 将 unknown 错误转为可读消息 */
+export function errMsg(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
 }

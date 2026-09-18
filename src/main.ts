@@ -27,7 +27,8 @@ export default class LivesyncZhPlugin extends Plugin {
             {
                 onStatus: (s: SyncStatus, c: SyncCounters) => this.updateStatusBar(s, c),
                 onLog: (msg: string) => this.addLog(msg),
-            }
+            },
+            this.app.vault
         );
 
         this.settingTab = new LivesyncSettingTab(this.app, this);
@@ -52,7 +53,7 @@ export default class LivesyncZhPlugin extends Plugin {
         });
     }
 
-    async onunload(): Promise<void> {
+    onunload(): void {
         if (this.reflectTimer !== null) {
             window.clearTimeout(this.reflectTimer);
             this.reflectTimer = null;
@@ -61,7 +62,7 @@ export default class LivesyncZhPlugin extends Plugin {
             window.clearTimeout(this.saveTimer);
             this.saveTimer = null;
         }
-        await this.engine.stop();
+        void this.engine.stop();
     }
 
     // ─────────────────────────── 命令 ───────────────────────────
@@ -119,7 +120,7 @@ export default class LivesyncZhPlugin extends Plugin {
         });
         new Setting(modal.contentEl)
             .addButton((b) => {
-                b.setButtonText("取消").setWarning().onClick(() => modal.close());
+                b.setButtonText("取消").setDestructive().onClick(() => modal.close());
             })
             .addButton((b) => {
                 b.setButtonText("确认重置").setCta().onClick(async () => {
@@ -179,8 +180,9 @@ export default class LivesyncZhPlugin extends Plugin {
             if (this.engine.isApplyingRemote()) continue;
             try {
                 await this.engine.reflectFile(file);
-            } catch (e: any) {
-                this.addLog(`⚠️ 反射变更失败（${file.path}）：${e?.message ?? e}`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                this.addLog(`⚠️ 反射变更失败（${file.path}）：${msg}`);
             }
         }
     }
@@ -196,7 +198,7 @@ export default class LivesyncZhPlugin extends Plugin {
             syncing: "⚡ 同步中",
             error: "⚠ 同步出错",
         };
-        this.statusBarEl.setText(`${labels[s] ?? s}　↑${c.up} ↓${c.down}`);
+        this.statusBarEl.setText(`${labels[s] ?? s} ↑${c.up} ↓${c.down}`);
         this.statusBarEl.removeClass("ls-zh-status-ok", "ls-zh-status-warn", "ls-zh-status-error");
         this.statusBarEl.addClass(
             s === "error" ? "ls-zh-status-error" : s === "syncing" || s === "connecting" ? "ls-zh-status-warn" : "ls-zh-status-ok"
@@ -218,7 +220,7 @@ export default class LivesyncZhPlugin extends Plugin {
     // ─────────────────────────── 设置持久化 ───────────────────────────
 
     async loadSettings(): Promise<void> {
-        const data = await this.loadData();
+        const data = (await this.loadData()) as Partial<LiveSyncSettings> | null;
         this.settings = { ...DEFAULT_SETTINGS, ...(data ?? {}) };
     }
 
