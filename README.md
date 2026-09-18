@@ -1,4 +1,4 @@
-# SyncVault 实时同步・syncvault
+# SyncVault・syncvault
 
 自托管 Obsidian 实时双向同步插件，全中文界面。基于开源项目
 
@@ -38,7 +38,7 @@
 
    `你的库/.obsidian/plugins/syncvault/`
 
-2. 打开 Obsidian → 设置 → 第三方插件 → 开启「SyncVault 实时同步」
+2. 打开 Obsidian → 设置 → 第三方插件 → 开启「SyncVault」
 
 3. 在插件设置页完成三步配置（见下）
 

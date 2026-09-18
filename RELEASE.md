@@ -29,7 +29,7 @@ git push -u origin main
 4. 手机 Obsidian：设置 → 第三方插件 → 关闭受限模式 → 社区插件市场搜索 **BRAT** 安装。
 5. BRAT 设置 → **Add Beta plugin** → 粘贴 `https://github.com/Tiga89/syncvault`。
 6. 私有仓库需在 BRAT 设置里为插件填入**步骤 3 的令牌**（BRAT 设置页有 token 输入框）。
-7. 安装后插件列表出现「SyncVault 实时同步」，启用即可。
+7. 安装后插件列表出现「SyncVault」，启用即可。
 
 以后电脑端改了代码 `git push`，手机上在 BRAT 里点 **Check for updates** 即可更新。
 （也可打 tag 触发 GitHub Actions 自动构建 Release，BRAT 会优先用 Release。）
