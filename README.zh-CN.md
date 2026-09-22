@@ -63,7 +63,7 @@ headers = accept, authorization, content-type, origin, referer, x-csrf-token
 
 ### 2. 第一台设备
 
-1. 打开插件设置 →「① 服务器设置」：
+1. 打开插件设置 →「① 服务器」：
    * 服务器地址：`http://你的服务器:5984` 或 `https://sync.example.com`
    * 用户名 / 密码：CouchDB 账号
    * 数据库名：任意，如 `obsidian-vault`（所有设备一致）

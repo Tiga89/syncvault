@@ -39,6 +39,12 @@ export interface LiveSyncSettings {
     keyFingerprint: string;
     /** 最近日志（最多 100 条） */
     log: string[];
+    /** 启动同步后自动执行一次完整双向同步（移动端友好） */
+    pullOnStart: boolean;
+    /** 额外排除的文件夹（每行一个，相对路径，用于选择性同步） */
+    excludeFolders: string;
+    /** 界面语言 */
+    uiLang: "zh" | "en";
 }
 
 export const DEFAULT_SETTINGS: LiveSyncSettings = {
@@ -59,6 +65,9 @@ export const DEFAULT_SETTINGS: LiveSyncSettings = {
     passphrase: "",
     keyFingerprint: "",
     log: [],
+    pullOnStart: false,
+    excludeFolders: "",
+    uiLang: "zh",
 };
 
 /** 同步文档结构（存储在 CouchDB 中） */

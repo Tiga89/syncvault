@@ -1,8 +1,24 @@
 /**
- * 中文设置界面
+ * SyncVault 设置界面（中英双语）
+ *
+ * 说明：getSettingDefinitions() 当前返回空数组。Obsidian 1.13+ 一旦返回
+ * 带 control 的定义，就会用声明式渲染接管整个设置页（替代本文件手写 UI），
+ * 这会改动现有布局与自定义组件（Modal、日志区、指纹展示等）。为保持
+ * 现有功能稳定，暂不迁移，仅保留空的搜索占位。
  */
-import { App, Modal, Notice, PluginSettingTab, Setting, TextComponent, type SettingDefinition } from "obsidian";
+import {
+    App,
+    Modal,
+    Notice,
+    PluginSettingTab,
+    Setting,
+    TextComponent,
+    type SettingDefinition,
+} from "obsidian";
+import { exportRecovery, importRecovery } from "./recovery";
 import { generateStrongPassphrase } from "./crypto";
+import { t, type Lang } from "./i18n";
+import { errMsg } from "./utils";
 import type LivesyncZhPlugin from "./main";
 
 export class LivesyncSettingTab extends PluginSettingTab {
@@ -15,6 +31,14 @@ export class LivesyncSettingTab extends PluginSettingTab {
     /** 声明式设置定义（Obsidian 1.13+ 设置搜索用） */
     getSettingDefinitions(): SettingDefinition[] {
         return [];
+    }
+
+    private lang(): Lang {
+        return this.plugin.settings.uiLang === "en" ? "en" : "zh";
+    }
+
+    private tt(key: Parameters<typeof t>[1], vars?: Record<string, string | number>): string {
+        return t(this.lang(), key, vars);
     }
 
     constructor(app: App, private plugin: LivesyncZhPlugin) {
@@ -30,6 +54,10 @@ export class LivesyncSettingTab extends PluginSettingTab {
         this.renderEncryption(containerEl);
         this.renderSyncSettings(containerEl);
         this.renderConflict(containerEl);
+        this.renderMobile(containerEl);
+        this.renderSelective(containerEl);
+        this.renderLanguage(containerEl);
+        this.renderSecurity(containerEl);
         this.renderMaintenance(containerEl);
         this.renderLog(containerEl);
     }
@@ -45,17 +73,15 @@ export class LivesyncSettingTab extends PluginSettingTab {
         this.renderFingerprint();
     }
 
-    // ─────────────────────────── 快速开始 ───────────────────────────
+    // ─────────────────────────── 服务器设置 ───────────────────────────
 
     private renderQuickStart(parent: HTMLElement): void {
-        new Setting(parent).setName("① 服务器设置").setHeading();
-        new Setting(parent).setName("快速开始").setDesc(
-            "三步完成配置：① 填写服务器地址与账号 → ② 填写数据库名并「测试连接」→ ③ 打开端到端加密、设置密码 → 点击「启动同步」。所有设备使用相同配置即可互相同步。"
-        );
+        new Setting(parent).setName(this.tt("sec_server")).setHeading();
+        new Setting(parent).setName("SyncVault").setDesc(this.tt("sec_quickstart_desc"));
 
         new Setting(parent)
-            .setName("服务器地址")
-            .setDesc("CouchDB 服务地址，例如 http://192.168.1.10:5984 或 https://sync.example.com。生产环境建议使用 HTTPS 加密传输。")
+            .setName(this.tt("server_url"))
+            .setDesc(this.tt("server_url_desc"))
             .addText((text) =>
                 text
                     .setPlaceholder("http://192.168.1.10:5984")
@@ -67,7 +93,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
             );
 
         new Setting(parent)
-            .setName("用户名")
+            .setName(this.tt("username"))
             .addText((text) =>
                 text
                     .setValue(this.plugin.settings.username)
@@ -78,7 +104,7 @@ export class LivesyncSettingTab extends PluginSettingTab {
             );
 
         new Setting(parent)
-            .setName("密码")
+            .setName(this.tt("password"))
             .addText((text) => {
                 text.inputEl.type = "password";
                 return text.setValue(this.plugin.settings.password).onChange(async (v) => {
@@ -88,8 +114,8 @@ export class LivesyncSettingTab extends PluginSettingTab {
             });
 
         new Setting(parent)
-            .setName("数据库名")
-            .setDesc("CouchDB 中用于存储笔记的数据库。所有设备必须一致。若不存在，插件会在测试连接时尝试自动创建。")
+            .setName(this.tt("db_name"))
+            .setDesc(this.tt("db_name_desc"))
             .addText((text) =>
                 text
                     .setPlaceholder("obsidian-vault")
@@ -100,13 +126,13 @@ export class LivesyncSettingTab extends PluginSettingTab {
                     })
             );
 
-        new Setting(parent).setName("连接状态").setDesc("查看服务器连接与同步状态。").addButton((btn) => {
-            btn.setButtonText("测试连接").setCta().onClick(async () => {
+        new Setting(parent).setName(this.tt("conn_status")).setDesc(this.tt("conn_status_desc")).addButton((btn) => {
+            btn.setButtonText(this.tt("test_conn")).setCta().onClick(async () => {
                 btn.setDisabled(true);
-                btn.setButtonText("测试中…");
+                btn.setButtonText(this.tt("testing"));
                 const r = await this.plugin.engine.testConnection();
                 btn.setDisabled(false);
-                btn.setButtonText("测试连接");
+                btn.setButtonText(this.tt("test_conn"));
                 new Notice(r.msg, 5000);
                 this.plugin.addLog(r.msg);
             });
@@ -115,15 +141,17 @@ export class LivesyncSettingTab extends PluginSettingTab {
         this.statusEl = parent.createDiv({ cls: "ls-zh-settings-section" });
         this.renderStatus(this.statusEl);
 
-        new Setting(parent).addButton((btn) => {
-            btn.setButtonText("▶ 启动同步").setCta().onClick(() => {
-                void this.plugin.engine.start();
+        new Setting(parent)
+            .addButton((btn) => {
+                btn.setButtonText(this.tt("start_sync")).setCta().onClick(() => {
+                    void this.plugin.engine.start();
+                });
+            })
+            .addButton((btn) => {
+                btn.setButtonText(this.tt("stop_sync")).onClick(() => {
+                    void this.plugin.engine.stop();
+                });
             });
-        }).addButton((btn) => {
-            btn.setButtonText("⏹ 停止同步").onClick(() => {
-                void this.plugin.engine.stop();
-            });
-        });
     }
 
     private renderStatus(el: HTMLElement | null): void {
@@ -132,69 +160,63 @@ export class LivesyncSettingTab extends PluginSettingTab {
         const st = this.plugin.engine.getStatus();
         const cnt = this.plugin.engine.getCounters();
         const labels: Record<string, string> = {
-            stopped: "⏹ 已停止",
-            connecting: "🔌 连接中…",
-            idle: "💤 同步空闲",
-            syncing: "⚡ 同步中…",
-            error: "⚠ 出错",
+            stopped: this.tt("st_stopped"),
+            connecting: this.tt("st_connecting"),
+            idle: this.tt("st_idle"),
+            syncing: this.tt("st_syncing"),
+            error: this.tt("st_error"),
         };
-        const cls = st === "error" ? "ls-zh-status-error" : st === "syncing" ? "ls-zh-status-warn" : "ls-zh-status-ok";
-        el.createDiv({ cls, text: `${labels[st] ?? st} ↑ 上传 ${cnt.up} ↓ 下载 ${cnt.down}` });
-        if (st === "error" && cnt.lastError) {
-            el.createDiv({ cls: "ls-zh-status-error", text: `错误：${cnt.lastError}` });
-        }
+        const line = `${labels[st] ?? st} ↑${cnt.up} ↓${cnt.down}`;
+        el.createEl("small", { text: cnt.lastError ? `${line}（${cnt.lastError}）` : line });
     }
 
     // ─────────────────────────── 端到端加密 ───────────────────────────
 
     private renderEncryption(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        new Setting(section).setName("② 端到端加密").setHeading();
+        new Setting(section).setName(this.tt("sec_encrypt")).setHeading();
 
         new Setting(section)
-            .setName("启用端到端加密")
-            .setDesc(
-                "开启后，所有笔记内容与文件名会在离开本机前使用 AES-256-GCM 加密（密钥由密码经 PBKDF2 派生）。服务器管理员、机房运维只能看到密文，无法读取你的笔记。"
-            )
-            .addToggle((t) =>
-                t.setValue(this.plugin.settings.encrypt).onChange(async (v) => {
+            .setName(this.tt("encrypt_toggle"))
+            .setDesc(this.tt("encrypt_desc"))
+            .addToggle((tog) =>
+                tog.setValue(this.plugin.settings.encrypt).onChange(async (v) => {
                     this.plugin.settings.encrypt = v;
+                    if (!v) this.plugin.settings.keyFingerprint = "";
                     await this.plugin.saveSettings();
-                    this.refreshStatus();
+                    this.renderFingerprint();
                 })
             );
 
         const passSetting = new Setting(section)
-            .setName("加密密码")
-            .setDesc(
-                "用于派生加密密钥，所有设备必须填写相同密码与数据库名。请务必牢记：忘记密码将无法解密任何已同步的数据；密码保存在本机配置文件中，请妥善保管 Vault。"
-            );
-        passSetting.addText((text) => {
-            text.inputEl.type = "password";
-            this.passInput = text;
-            return text.setValue(this.plugin.settings.passphrase).onChange(async (v) => {
-                this.plugin.settings.passphrase = v;
-                this.plugin.settings.keyFingerprint = "";
-                await this.plugin.saveSettings();
-                this.renderFingerprint();
+            .setName(this.tt("passphrase"))
+            .setDesc(this.tt("passphrase_desc"))
+            .addText((text) => {
+                text.inputEl.type = "password";
+                this.passInput = text;
+                return text.setValue(this.plugin.settings.passphrase).onChange(async (v) => {
+                    this.plugin.settings.passphrase = v;
+                    this.plugin.settings.keyFingerprint = "";
+                    await this.plugin.saveSettings();
+                    this.renderFingerprint();
+                });
             });
-        });
         passSetting.addButton((btn) =>
-            btn.setButtonText("生成随机密码").onClick(async () => {
+            btn.setButtonText(this.tt("gen_password")).onClick(async () => {
                 const p = generateStrongPassphrase();
                 this.plugin.settings.passphrase = p;
                 this.plugin.settings.keyFingerprint = "";
                 if (this.passInput) this.passInput.setValue(p);
                 await this.plugin.saveSettings();
-                new Notice("已生成随机密码，请复制并妥善保存（所有设备需一致）", 6000);
+                new Notice(this.tt("gen_password_done"), 6000);
                 this.renderFingerprint();
             })
         );
         passSetting.addButton((btn) => {
             let hidden = true;
-            btn.setButtonText("显示").onClick(() => {
+            btn.setButtonText(this.tt("show")).onClick(() => {
                 hidden = !hidden;
-                btn.setButtonText(hidden ? "显示" : "隐藏");
+                btn.setButtonText(hidden ? this.tt("show") : this.tt("hide"));
                 if (this.passInput) this.passInput.inputEl.type = hidden ? "password" : "text";
             });
         });
@@ -209,57 +231,57 @@ export class LivesyncSettingTab extends PluginSettingTab {
         const s = this.plugin.settings;
         if (!s.encrypt) {
             this.fingerprintEl.createEl("small", {
-                text: "🔓 未启用加密：内容将以明文存储在服务器数据库中。",
+                text: this.tt("fp_not_encrypted"),
             });
             return;
         }
         if (!s.passphrase) {
-            this.fingerprintEl.createEl("small", { text: "⚠️ 未设置加密密码。" });
+            this.fingerprintEl.createEl("small", { text: this.tt("fp_no_pass") });
             return;
         }
-        const fp = s.keyFingerprint || "（尚未生成，启动同步后自动生成）";
-        this.fingerprintEl.createEl("small", { text: `🔐 密钥指纹：${fp} （各设备此值应一致）` });
+        const fp = s.keyFingerprint || this.tt("fp_pending");
+        this.fingerprintEl.createEl("small", { text: this.tt("fp_fingerprint", { fp }) });
     }
 
     // ─────────────────────────── 同步设置 ───────────────────────────
 
     private renderSyncSettings(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        new Setting(section).setName("③ 同步设置").setHeading();
+        new Setting(section).setName(this.tt("sec_sync")).setHeading();
 
         new Setting(section)
-            .setName("实时同步")
-            .setDesc("打开后持续监控变更并双向复制；断线自动重连。关闭后仅按定时任务或手动同步。")
-            .addToggle((t) =>
-                t.setValue(this.plugin.settings.liveSync).onChange(async (v) => {
+            .setName(this.tt("live_sync"))
+            .setDesc(this.tt("live_sync_desc"))
+            .addToggle((tog) =>
+                tog.setValue(this.plugin.settings.liveSync).onChange(async (v) => {
                     this.plugin.settings.liveSync = v;
                     await this.plugin.saveSettings();
                 })
             );
 
         new Setting(section)
-            .setName("保存后自动同步")
-            .setDesc("文件保存（Ctrl+S）后立即触发同步。")
-            .addToggle((t) =>
-                t.setValue(this.plugin.settings.syncOnSave).onChange(async (v) => {
+            .setName(this.tt("sync_on_save"))
+            .setDesc(this.tt("sync_on_save_desc"))
+            .addToggle((tog) =>
+                tog.setValue(this.plugin.settings.syncOnSave).onChange(async (v) => {
                     this.plugin.settings.syncOnSave = v;
                     await this.plugin.saveSettings();
                 })
             );
 
         new Setting(section)
-            .setName("启动时自动开始同步")
-            .setDesc("打开 Obsidian 后自动启动同步。")
-            .addToggle((t) =>
-                t.setValue(this.plugin.settings.autoStart).onChange(async (v) => {
+            .setName(this.tt("auto_start"))
+            .setDesc(this.tt("auto_start_desc"))
+            .addToggle((tog) =>
+                tog.setValue(this.plugin.settings.autoStart).onChange(async (v) => {
                     this.plugin.settings.autoStart = v;
                     await this.plugin.saveSettings();
                 })
             );
 
         new Setting(section)
-            .setName("定时完整同步（分钟）")
-            .setDesc("每隔指定时间执行一次完整双向同步，作为实时同步的兜底。0 表示关闭。")
+            .setName(this.tt("periodic"))
+            .setDesc(this.tt("periodic_desc"))
             .addText((text) => {
                 text.inputEl.type = "number";
                 return text.setValue(String(this.plugin.settings.periodicMinutes)).onChange(async (v) => {
@@ -270,18 +292,18 @@ export class LivesyncSettingTab extends PluginSettingTab {
             });
 
         new Setting(section)
-            .setName("启动时扫描本地库")
-            .setDesc("启动同步时检查磁盘文件是否有遗漏变更（安全网，防止插件关闭期间的外部修改漏同步）。")
-            .addToggle((t) =>
-                t.setValue(this.plugin.settings.startupScan).onChange(async (v) => {
+            .setName(this.tt("startup_scan"))
+            .setDesc(this.tt("startup_scan_desc"))
+            .addToggle((tog) =>
+                tog.setValue(this.plugin.settings.startupScan).onChange(async (v) => {
                     this.plugin.settings.startupScan = v;
                     await this.plugin.saveSettings();
                 })
             );
 
         new Setting(section)
-            .setName("最大同步文件大小（MB）")
-            .setDesc("超过该大小的文件将被跳过（CouchDB 单文档大小有限制，可同时调大服务器 max_document_size）。")
+            .setName(this.tt("max_size"))
+            .setDesc(this.tt("max_size_desc"))
             .addText((text) => {
                 text.inputEl.type = "number";
                 return text.setValue(String(this.plugin.settings.maxSizeMB)).onChange(async (v) => {
@@ -292,8 +314,8 @@ export class LivesyncSettingTab extends PluginSettingTab {
             });
 
         new Setting(section)
-            .setName("忽略规则（正则）")
-            .setDesc("匹配的路径将不同步。作用于完整路径，例如：^附件/ 表示忽略“附件”目录。留空表示全部同步。")
+            .setName(this.tt("ignore_regex"))
+            .setDesc(this.tt("ignore_regex_desc"))
             .addText((text) =>
                 text
                     .setPlaceholder("^附件/|^tmp/")
@@ -305,10 +327,10 @@ export class LivesyncSettingTab extends PluginSettingTab {
             );
 
         new Setting(section)
-            .setName(`同步配置目录（${this.app.vault.configDir}）`)
-            .setDesc("同步设置、主题、代码片段等（不包括本插件自身的配置文件）。建议在普通笔记同步稳定后再开启。")
-            .addToggle((t) =>
-                t.setValue(this.plugin.settings.syncHidden).onChange(async (v) => {
+            .setName(this.tt("sync_config_dir", { cfg: this.app.vault.configDir }))
+            .setDesc(this.tt("sync_config_dir_desc"))
+            .addToggle((tog) =>
+                tog.setValue(this.plugin.settings.syncHidden).onChange(async (v) => {
                     this.plugin.settings.syncHidden = v;
                     await this.plugin.saveSettings();
                 })
@@ -319,80 +341,267 @@ export class LivesyncSettingTab extends PluginSettingTab {
 
     private renderConflict(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        new Setting(section).setName("④ 冲突处理").setHeading();
+        new Setting(section).setName(this.tt("sec_conflict")).setHeading();
 
         new Setting(section)
-            .setName("自动合并 Markdown 冲突")
-            .setDesc(
-                "当同一篇笔记在两台设备上都被修改时：若一方是另一方的超集则自动合并；否则用冲突标记（<<<<<<< / ======= / >>>>>>>）合并到原文件，双方内容都不丢失。关闭后，远端版本将另存为「（冲突 …）」副本。"
-            )
-            .addToggle((t) =>
-                t.setValue(this.plugin.settings.autoMerge).onChange(async (v) => {
+            .setName(this.tt("auto_merge"))
+            .setDesc(this.tt("auto_merge_desc"))
+            .addToggle((tog) =>
+                tog.setValue(this.plugin.settings.autoMerge).onChange(async (v) => {
                     this.plugin.settings.autoMerge = v;
                     await this.plugin.saveSettings();
                 })
             );
     }
 
+    // ─────────────────────────── 移动端 ───────────────────────────
+
+    private renderMobile(parent: HTMLElement): void {
+        const section = parent.createDiv({ cls: "ls-zh-settings-section" });
+        new Setting(section).setName(this.tt("sec_mobile")).setHeading();
+
+        new Setting(section)
+            .setName(this.tt("pull_on_start"))
+            .setDesc(this.tt("pull_on_start_desc"))
+            .addToggle((tog) =>
+                tog.setValue(this.plugin.settings.pullOnStart).onChange(async (v) => {
+                    this.plugin.settings.pullOnStart = v;
+                    await this.plugin.saveSettings();
+                })
+            );
+    }
+
+    // ─────────────────────────── 选择性同步 ───────────────────────────
+
+    private renderSelective(parent: HTMLElement): void {
+        const section = parent.createDiv({ cls: "ls-zh-settings-section" });
+        new Setting(section).setName(this.tt("sec_selective")).setHeading();
+
+        new Setting(section)
+            .setName(this.tt("exclude_folders"))
+            .setDesc(this.tt("exclude_folders_desc"))
+            .addTextArea((ta) =>
+                ta
+                    .setPlaceholder("附件/\n备份/")
+                    .setValue(this.plugin.settings.excludeFolders)
+                    .onChange(async (v) => {
+                        this.plugin.settings.excludeFolders = v;
+                        await this.plugin.saveSettings();
+                    })
+            );
+    }
+
+    // ─────────────────────────── 界面语言 ───────────────────────────
+
+    private renderLanguage(parent: HTMLElement): void {
+        const section = parent.createDiv({ cls: "ls-zh-settings-section" });
+        new Setting(section).setName(this.tt("sec_lang")).setHeading();
+
+        new Setting(section)
+            .setName(this.tt("ui_lang"))
+            .setDesc(this.tt("ui_lang_desc"))
+            .addDropdown((dd) =>
+                dd
+                    .addOption("zh", this.tt("lang_zh"))
+                    .addOption("en", this.tt("lang_en"))
+                    .setValue(this.plugin.settings.uiLang)
+                    .onChange(async (v) => {
+                        this.plugin.settings.uiLang = v === "en" ? "en" : "zh";
+                        await this.plugin.saveSettings();
+                        this.display();
+                    })
+            );
+    }
+
+    // ─────────────────────────── 数据安全（恢复密钥） ───────────────────────────
+
+    private renderSecurity(parent: HTMLElement): void {
+        const section = parent.createDiv({ cls: "ls-zh-settings-section" });
+        new Setting(section).setName(this.tt("sec_security")).setHeading();
+
+        new Setting(section)
+            .setName(this.tt("export_recovery"))
+            .setDesc(this.tt("export_recovery_desc"))
+            .addButton((btn) =>
+                btn.setButtonText(this.tt("do_export_recovery")).setCta().onClick(() => {
+                    void this.showExportRecovery();
+                })
+            )
+            .addButton((btn) =>
+                btn.setButtonText(this.tt("do_import_recovery")).onClick(() => {
+                    void this.showImportRecovery();
+                })
+            );
+    }
+
+    /** 导出恢复密钥：输入恢复密码 → 生成恢复文件 → 复制剪贴板 */
+    private async showExportRecovery(): Promise<void> {
+        const modal = new Modal(this.app);
+        modal.titleEl.setText(this.tt("export_recovery"));
+        let recoveryPassword = "";
+        const s = this.plugin.settings;
+        if (!s.passphrase) {
+            modal.contentEl.createEl("p", {
+                text: this.tt("fp_no_pass"),
+            });
+            new Setting(modal.contentEl).addButton((b) => {
+                b.setButtonText(this.tt("cancel")).setDestructive().onClick(() => modal.close());
+            });
+            modal.open();
+            return;
+        }
+        modal.contentEl.createEl("p", { text: this.tt("recovery_password_desc") });
+        new Setting(modal.contentEl)
+            .setName(this.tt("recovery_password"))
+            .addText((text) => {
+                text.inputEl.type = "password";
+                return text.onChange((v) => {
+                    recoveryPassword = v;
+                });
+            });
+        const output = modal.contentEl.createEl("textarea", {
+            cls: "ls-zh-log-area",
+            attr: { rows: "6", readonly: "readonly", spellcheck: "false" },
+        });
+        output.hide();
+        new Setting(modal.contentEl)
+            .addButton((b) =>
+                b
+                    .setButtonText(this.tt("do_export_recovery"))
+                    .setCta()
+                    .onClick(async () => {
+                        if (!recoveryPassword) {
+                            new Notice(this.tt("recovery_password_required"), 5000);
+                            return;
+                        }
+                        try {
+                            const fileText = await exportRecovery(s.passphrase, recoveryPassword, s.dbName);
+                            output.value = fileText;
+                            output.show();
+                            if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+                                await navigator.clipboard.writeText(fileText);
+                            }
+                            new Notice(this.tt("recovery_exported"), 8000);
+                        } catch (e) {
+                            new Notice(this.tt("diag_failed") + errMsg(e), 6000);
+                        }
+                    })
+            )
+            .addButton((b) => {
+                b.setButtonText(this.tt("cancel")).setDestructive().onClick(() => modal.close());
+            });
+        modal.open();
+    }
+
+    /** 导入恢复密钥：输入恢复密码 + 恢复文件 → 还原主加密密码 */
+    private async showImportRecovery(): Promise<void> {
+        const modal = new Modal(this.app);
+        modal.titleEl.setText(this.tt("do_import_recovery"));
+        let recoveryPassword = "";
+        let fileContent = "";
+        modal.contentEl.createEl("p", { text: this.tt("recovery_password_desc") });
+        new Setting(modal.contentEl)
+            .setName(this.tt("recovery_password"))
+            .addText((text) => {
+                text.inputEl.type = "password";
+                return text.onChange((v) => {
+                    recoveryPassword = v;
+                });
+            });
+        new Setting(modal.contentEl)
+            .setName(this.tt("recovery_file"))
+            .setDesc(this.tt("recovery_file_desc"))
+            .addTextArea((ta) =>
+                ta.setPlaceholder('{"v":1,...}').onChange((v) => {
+                    fileContent = v;
+                })
+            );
+        new Setting(modal.contentEl)
+            .addButton((b) =>
+                b
+                    .setButtonText(this.tt("do_import_recovery"))
+                    .setCta()
+                    .onClick(async () => {
+                        try {
+                            const result = await importRecovery(fileContent, recoveryPassword);
+                            this.plugin.settings.passphrase = result.passphrase;
+                            this.plugin.settings.dbName = result.dbName;
+                            this.plugin.settings.keyFingerprint = result.fingerprint;
+                            if (this.passInput) this.passInput.setValue(result.passphrase);
+                            await this.plugin.saveSettings();
+                            this.renderFingerprint();
+                            modal.close();
+                            new Notice(this.tt("recovery_import_ok"), 6000);
+                        } catch (e) {
+                            new Notice(this.tt("recovery_import_fail") + "（" + errMsg(e) + "）", 6000);
+                        }
+                    })
+            )
+            .addButton((b) => {
+                b.setButtonText(this.tt("cancel")).setDestructive().onClick(() => modal.close());
+            });
+        modal.open();
+    }
+
     // ─────────────────────────── 维护与日志 ───────────────────────────
 
     private renderMaintenance(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        new Setting(section).setName("⑤ 维护操作").setHeading();
+        new Setting(section).setName(this.tt("sec_maint")).setHeading();
 
         new Setting(section)
-            .setName("立即同步")
-            .setDesc("手动执行一次完整的双向同步。")
+            .setName(this.tt("sync_now"))
+            .setDesc(this.tt("sync_now_desc"))
             .addButton((btn) =>
-                btn.setButtonText("立即同步").setCta().onClick(() => {
+                btn.setButtonText(this.tt("sync_now")).setCta().onClick(() => {
                     void this.plugin.engine.syncNow();
                 })
             );
 
         new Setting(section)
-            .setName("全量上传")
-            .setDesc("把当前 Vault 的所有文件上传到服务器（覆盖远端同路径文件）。适合第一台设备初始化。")
+            .setName(this.tt("full_upload"))
+            .setDesc(this.tt("full_upload_desc"))
             .addButton((btn) =>
-                btn.setButtonText("全量上传").onClick(async () => {
+                btn.setButtonText(this.tt("full_upload")).onClick(async () => {
                     btn.setDisabled(true);
-                    btn.setButtonText("上传中…");
+                    btn.setButtonText(this.tt("uploading"));
                     await this.plugin.engine.pushAll();
                     btn.setDisabled(false);
-                    btn.setButtonText("全量上传");
+                    btn.setButtonText(this.tt("full_upload"));
                     this.refreshStatus();
                 })
             );
 
         new Setting(section)
-            .setName("全量下载")
-            .setDesc("从服务器下载全部内容并覆盖本地同路径文件。适合第二台设备初始化。")
+            .setName(this.tt("full_download"))
+            .setDesc(this.tt("full_download_desc"))
             .addButton((btn) =>
-                btn.setButtonText("全量下载").onClick(async () => {
+                btn.setButtonText(this.tt("full_download")).onClick(async () => {
                     btn.setDisabled(true);
-                    btn.setButtonText("下载中…");
+                    btn.setButtonText(this.tt("downloading"));
                     await this.plugin.engine.pullAll();
                     btn.setDisabled(false);
-                    btn.setButtonText("全量下载");
+                    btn.setButtonText(this.tt("full_download"));
                     this.refreshStatus();
                 })
             );
 
         new Setting(section)
-            .setName("重置本地数据库")
-            .setDesc("清空本机的同步数据库与所有远端缓存记录（不影响服务器数据与本地笔记文件）。加密密码或数据库名变更后必须重置。")
+            .setName(this.tt("reset_db"))
+            .setDesc(this.tt("reset_db_desc"))
             .addButton((btn) =>
-                btn.setButtonText("重置本地数据库").onClick(() => {
+                btn.setButtonText(this.tt("reset_db")).onClick(() => {
                     const modal = new Modal(this.app);
-                    modal.titleEl.setText("确认重置本地同步数据库？");
+                    modal.titleEl.setText(this.tt("reset_confirm_title"));
                     modal.contentEl.createEl("p", {
-                        text: "这将清空本机同步缓存并停止同步。服务器数据与本地笔记文件不会受影响。重置后请重新「启动同步」（建议随后执行全量上传或全量下载）。",
+                        text: this.tt("reset_confirm_body"),
                     });
                     new Setting(modal.contentEl)
                         .addButton((b) => {
-                            b.setButtonText("取消").setDestructive().onClick(() => modal.close());
+                            b.setButtonText(this.tt("cancel")).setDestructive().onClick(() => modal.close());
                         })
                         .addButton((b) => {
-                            b.setButtonText("确认重置").setCta().onClick(async () => {
+                            b.setButtonText(this.tt("confirm_reset")).setCta().onClick(async () => {
                                 await this.plugin.engine.resetLocal();
                                 modal.close();
                                 this.refreshStatus();
@@ -405,14 +614,14 @@ export class LivesyncSettingTab extends PluginSettingTab {
 
     private renderLog(parent: HTMLElement): void {
         const section = parent.createDiv({ cls: "ls-zh-settings-section" });
-        new Setting(section).setName("⑥ 同步日志").setHeading();
+        new Setting(section).setName(this.tt("sec_log")).setHeading();
         this.logEl = section.createEl("textarea", {
             cls: "ls-zh-log-area",
             attr: { readonly: "readonly", spellcheck: "false" },
         });
         this.updateLogArea();
         new Setting(section).addButton((btn) =>
-            btn.setButtonText("清空日志").onClick(async () => {
+            btn.setButtonText(this.tt("clear_log")).onClick(async () => {
                 this.plugin.settings.log = [];
                 await this.plugin.saveSettings();
                 this.updateLogArea();

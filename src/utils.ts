@@ -116,3 +116,42 @@ export function errStatus(e: unknown): number | undefined {
 export function errMsg(e: unknown): string {
     return e instanceof Error ? e.message : String(e);
 }
+
+/** 判断路径是否应被忽略（纯函数，便于单测） */
+export function shouldIgnore(
+    path: string,
+    opts: {
+        syncHidden: boolean;
+        ignoreRegEx: string;
+        excludeFolders: string[];
+        configDir: string;
+    }
+): boolean {
+    if (path.startsWith(".trash/") || path === ".trash") return true;
+    const cfgDir = opts.configDir.replace(/^\/+/, "");
+    if (path.startsWith(cfgDir + "/")) {
+        if (!opts.syncHidden) return true;
+        // 永远不同步本插件自身的配置文件，避免死循环
+        if (path.includes(cfgDir + "/plugins/syncvault/data.json")) return true;
+    }
+    for (const raw of opts.excludeFolders) {
+        const folder = raw.replace(/^\/+|\/+$/g, "");
+        if (folder && (path === folder || path.startsWith(folder + "/"))) return true;
+    }
+    if (opts.ignoreRegEx) {
+        try {
+            if (new RegExp(opts.ignoreRegEx).test(path)) return true;
+        } catch {
+            /* 无效正则忽略 */
+        }
+    }
+    return false;
+}
+
+/** 将多行文本解析为文件夹列表（去空行、去首尾斜杠） */
+export function parseFolderList(text: string): string[] {
+    return text
+        .split(/\r?\n/)
+        .map((s) => s.trim().replace(/^\/+|\/+$/g, ""))
+        .filter((s) => s.length > 0);
+}

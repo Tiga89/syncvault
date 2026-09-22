@@ -8,6 +8,8 @@ import { Modal, Notice, Plugin, Setting, TAbstractFile, TFile } from "obsidian";
 import { SyncEngine } from "./syncEngine";
 import { LivesyncSettingTab } from "./settings";
 import { DEFAULT_SETTINGS, type LiveSyncSettings, type SyncCounters, type SyncStatus } from "./types";
+import { t, type Lang } from "./i18n";
+import { buildDiagnosticsText } from "./diagnostics";
 
 export default class LivesyncZhPlugin extends Plugin {
     settings: LiveSyncSettings = { ...DEFAULT_SETTINGS };
@@ -39,7 +41,7 @@ export default class LivesyncZhPlugin extends Plugin {
         this.updateStatusBar("stopped", this.engine.getCounters());
 
         // 功能区图标：立即同步
-        this.addRibbonIcon("refresh-cw", "Livesync：立即同步", () => {
+        this.addRibbonIcon("refresh-cw", t(this.settings.uiLang, "ribbon_tooltip"), () => {
             void this.engine.syncNow();
         });
 
@@ -48,7 +50,9 @@ export default class LivesyncZhPlugin extends Plugin {
 
         this.app.workspace.onLayoutReady(() => {
             if (this.settings.autoStart) {
-                void this.engine.start();
+                void this.engine.start().then(() => {
+                    if (this.settings.pullOnStart) void this.engine.syncNow();
+                });
             }
         });
     }
@@ -67,63 +71,105 @@ export default class LivesyncZhPlugin extends Plugin {
 
     // ─────────────────────────── 命令 ───────────────────────────
 
+    private lang(): Lang {
+        return this.settings.uiLang === "en" ? "en" : "zh";
+    }
+
     private registerCommands(): void {
         this.addCommand({
             id: "start-sync",
-            name: "启动同步",
+            name: t(this.lang(), "cmd_start"),
             callback: () => {
                 void this.engine.start();
             },
         });
         this.addCommand({
             id: "stop-sync",
-            name: "停止同步",
+            name: t(this.lang(), "cmd_stop"),
             callback: () => {
                 void this.engine.stop();
             },
         });
         this.addCommand({
             id: "sync-now",
-            name: "立即同步",
+            name: t(this.lang(), "cmd_sync_now"),
             callback: () => {
                 void this.engine.syncNow();
             },
         });
         this.addCommand({
             id: "push-all",
-            name: "全量上传到服务器",
+            name: t(this.lang(), "cmd_push_all"),
             callback: () => {
                 void this.engine.pushAll();
             },
         });
         this.addCommand({
             id: "pull-all",
-            name: "从服务器全量下载",
+            name: t(this.lang(), "cmd_pull_all"),
             callback: () => {
                 void this.engine.pullAll();
             },
         });
         this.addCommand({
             id: "reset-local",
-            name: "重置本地同步数据库",
+            name: t(this.lang(), "cmd_reset"),
             callback: () => {
                 this.confirmReset();
             },
         });
+        this.addCommand({
+            id: "export-diagnostics",
+            name: t(this.lang(), "cmd_export_diag"),
+            callback: () => {
+                void this.exportDiagnostics();
+            },
+        });
+    }
+
+    /** 导出诊断信息（脱敏后复制到剪贴板） */
+    private async exportDiagnostics(): Promise<void> {
+        try {
+            const c = this.engine.getCounters();
+            const st = this.engine.getStatus();
+            const text = buildDiagnosticsText({
+                version: this.manifest.version,
+                serverUrl: this.settings.serverUrl,
+                dbName: this.settings.dbName,
+                username: this.settings.username,
+                encrypt: this.settings.encrypt,
+                pullOnStart: this.settings.pullOnStart,
+                excludeFolders: this.settings.excludeFolders,
+                status: st,
+                statusDetail: c.lastError ?? "",
+                up: c.up,
+                down: c.down,
+                lastError: c.lastError,
+                log: this.settings.log,
+            });
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+                await navigator.clipboard.writeText(text);
+                new Notice(t(this.lang(), "diag_copied"), 6000);
+            } else {
+                new Notice(text, 10000);
+            }
+        } catch (e) {
+            new Notice(t(this.lang(), "diag_failed") + (e instanceof Error ? e.message : String(e)), 6000);
+        }
     }
 
     private confirmReset(): void {
         const modal = new Modal(this.app);
-        modal.titleEl.setText("确认重置本地同步数据库？");
+        modal.titleEl.setText(t(this.lang(), "reset_confirm_title"));
         modal.contentEl.createEl("p", {
-            text: "这将清空本机同步缓存并停止同步。服务器数据与本地笔记文件不会受影响。重置后请重新「启动同步」。",
+            text: t(this.lang(), "reset_confirm_body"),
         });
         new Setting(modal.contentEl)
             .addButton((b) => {
-                b.setButtonText("取消").setDestructive().onClick(() => modal.close());
+                b.setButtonText(t(this.lang(), "cancel")).setDestructive().onClick(() => modal.close());
             })
             .addButton((b) => {
-                b.setButtonText("确认重置").setCta().onClick(async () => {
+                b.setButtonText(t(this.lang(), "confirm_reset")).setCta().onClick(async () => {
                     await this.engine.resetLocal();
                     modal.close();
                     this.updateStatusBar("stopped", this.engine.getCounters());
@@ -192,11 +238,11 @@ export default class LivesyncZhPlugin extends Plugin {
     private updateStatusBar(s: SyncStatus, c: SyncCounters): void {
         if (!this.statusBarEl) return;
         const labels: Record<string, string> = {
-            stopped: "⏹ 已停止",
-            connecting: "🔌 连接中",
-            idle: "💤 待同步",
-            syncing: "⚡ 同步中",
-            error: "⚠ 同步出错",
+            stopped: t(this.lang(), "st_stopped"),
+            connecting: t(this.lang(), "st_connecting"),
+            idle: t(this.lang(), "st_idle"),
+            syncing: t(this.lang(), "st_syncing"),
+            error: t(this.lang(), "st_error"),
         };
         this.statusBarEl.setText(`${labels[s] ?? s} ↑${c.up} ↓${c.down}`);
         this.statusBarEl.removeClass("ls-zh-status-ok", "ls-zh-status-warn", "ls-zh-status-error");
@@ -206,7 +252,7 @@ export default class LivesyncZhPlugin extends Plugin {
         this.settingTab?.refreshStatus();
         if (s === "error" && c.lastError && Date.now() - this.lastErrorNotice > 30000) {
             this.lastErrorNotice = Date.now();
-            new Notice(`Livesync 同步出错：${c.lastError}`, 6000);
+            new Notice(`${t(this.lang(), "st_error")}：${c.lastError}`, 6000);
         }
     }
 

@@ -31,7 +31,9 @@ import {
     getExtension,
     isMarkdownFile,
     isTextFile,
+    parseFolderList,
     sha256Hex,
+    shouldIgnore,
     sleep,
 } from "./utils";
 import { resolveConflicts } from "./conflict";
@@ -510,21 +512,12 @@ export class SyncEngine {
     /** 判断路径是否被忽略 */
     isIgnored(path: string): boolean {
         const s = this.settings();
-        if (path.startsWith(".trash/") || path === ".trash") return true;
-        const cfgDir = this.vault.configDir.replace(/^\/+/, "");
-        if (path.startsWith(cfgDir + "/")) {
-            if (!s.syncHidden) return true;
-            // 永远不同步本插件自身的配置文件，避免死循环
-            if (path.includes(cfgDir + "/plugins/syncvault/data.json")) return true;
-        }
-        if (s.ignoreRegEx) {
-            try {
-                if (new RegExp(s.ignoreRegEx).test(path)) return true;
-            } catch {
-                /* 无效正则忽略 */
-            }
-        }
-        return false;
+        return shouldIgnore(path, {
+            syncHidden: s.syncHidden,
+            ignoreRegEx: s.ignoreRegEx,
+            excludeFolders: parseFolderList(s.excludeFolders),
+            configDir: this.vault.configDir,
+        });
     }
 
     // ─────────────────────────── 远端变更应用（库 → Vault） ───────────────────────────

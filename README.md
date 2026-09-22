@@ -58,7 +58,7 @@ Then restart CouchDB.
 
 ### 2. First device
 
-1. Open plugin settings → "① 服务器设置":
+1. Open plugin settings → "① 服务器":
    - Server address: `http://your-server:5984` or `https://sync.example.com`
    - Username / password: your CouchDB account
    - Database name: anything, e.g. `obsidian-vault` (must be the same on all devices)
